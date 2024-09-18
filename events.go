@@ -1,20 +1,21 @@
 /*
-   Copyright The containerd Authors.
+Copyright The containerd Authors.
 
-   Licensed under the Apache License, Version 2.0 (the "License");
-   you may not use this file except in compliance with the License.
-   You may obtain a copy of the License at
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
 
-       http://www.apache.org/licenses/LICENSE-2.0
+	http://www.apache.org/licenses/LICENSE-2.0
 
-   Unless required by applicable law or agreed to in writing, software
-   distributed under the License is distributed on an "AS IS" BASIS,
-   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-   See the License for the specific language governing permissions and
-   limitations under the License.
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
 */
-
 package runc
+
+import "github.com/opencontainers/runc/libcontainer/intelrdt"
 
 // Event is a struct to pass runc event information
 type Event struct {
@@ -28,24 +29,24 @@ type Event struct {
 	Err error `json:"-"`
 }
 
-// Stats is statistical information from the runc process
+// stats is the runc specific stats structure for stability when encoding and decoding stats.
 type Stats struct {
-	Cpu               Cpu                 `json:"cpu"` //revive:disable
+	CPU               Cpu                 `json:"cpu"`
+	CPUSet            CPUSet              `json:"cpuset"`
 	Memory            Memory              `json:"memory"`
 	Pids              Pids                `json:"pids"`
 	Blkio             Blkio               `json:"blkio"`
 	Hugetlb           map[string]Hugetlb  `json:"hugetlb"`
+	IntelRdt          IntelRdt            `json:"intel_rdt"`
 	NetworkInterfaces []*NetworkInterface `json:"network_interfaces"`
 }
 
-// Hugetlb represents the detailed hugetlb component of the statistics data
 type Hugetlb struct {
 	Usage   uint64 `json:"usage,omitempty"`
 	Max     uint64 `json:"max,omitempty"`
 	Failcnt uint64 `json:"failcnt"`
 }
 
-// BlkioEntry represents a block IO entry in the IO stats
 type BlkioEntry struct {
 	Major uint64 `json:"major,omitempty"`
 	Minor uint64 `json:"minor,omitempty"`
@@ -53,7 +54,6 @@ type BlkioEntry struct {
 	Value uint64 `json:"value,omitempty"`
 }
 
-// Blkio represents the statistical information from block IO devices
 type Blkio struct {
 	IoServiceBytesRecursive []BlkioEntry `json:"ioServiceBytesRecursive,omitempty"`
 	IoServicedRecursive     []BlkioEntry `json:"ioServicedRecursive,omitempty"`
@@ -65,39 +65,46 @@ type Blkio struct {
 	SectorsRecursive        []BlkioEntry `json:"sectorsRecursive,omitempty"`
 }
 
-// Pids represents the process ID information
 type Pids struct {
 	Current uint64 `json:"current,omitempty"`
 	Limit   uint64 `json:"limit,omitempty"`
 }
 
-// Throttling represents the throttling statistics
 type Throttling struct {
 	Periods          uint64 `json:"periods,omitempty"`
 	ThrottledPeriods uint64 `json:"throttledPeriods,omitempty"`
 	ThrottledTime    uint64 `json:"throttledTime,omitempty"`
 }
 
-// CpuUsage represents the CPU usage statistics
-//
-//revive:disable-next-line
 type CpuUsage struct {
 	// Units: nanoseconds.
-	Total  uint64   `json:"total,omitempty"`
-	Percpu []uint64 `json:"percpu,omitempty"`
-	Kernel uint64   `json:"kernel"`
-	User   uint64   `json:"user"`
+	Total        uint64   `json:"total,omitempty"`
+	Percpu       []uint64 `json:"percpu,omitempty"`
+	PercpuKernel []uint64 `json:"percpu_kernel,omitempty"`
+	PercpuUser   []uint64 `json:"percpu_user,omitempty"`
+	Kernel       uint64   `json:"kernel"`
+	User         uint64   `json:"user"`
 }
 
-// Cpu represents the CPU usage and throttling statistics
-//
-//revive:disable-next-line
 type Cpu struct {
 	Usage      CpuUsage   `json:"usage,omitempty"`
 	Throttling Throttling `json:"throttling,omitempty"`
 }
 
-// MemoryEntry represents an item in the memory use/statistics
+type CPUSet struct {
+	CPUs                  []uint16 `json:"cpus,omitempty"`
+	CPUExclusive          uint64   `json:"cpu_exclusive"`
+	Mems                  []uint16 `json:"mems,omitempty"`
+	MemHardwall           uint64   `json:"mem_hardwall"`
+	MemExclusive          uint64   `json:"mem_exclusive"`
+	MemoryMigrate         uint64   `json:"memory_migrate"`
+	MemorySpreadPage      uint64   `json:"memory_spread_page"`
+	MemorySpreadSlab      uint64   `json:"memory_spread_slab"`
+	MemoryPressure        uint64   `json:"memory_pressure"`
+	SchedLoadBalance      uint64   `json:"sched_load_balance"`
+	SchedRelaxDomainLevel int64    `json:"sched_relax_domain_level"`
+}
+
 type MemoryEntry struct {
 	Limit   uint64 `json:"limit"`
 	Usage   uint64 `json:"usage,omitempty"`
@@ -105,7 +112,6 @@ type MemoryEntry struct {
 	Failcnt uint64 `json:"failcnt"`
 }
 
-// Memory represents the collection of memory statistics from the process
 type Memory struct {
 	Cache     uint64            `json:"cache,omitempty"`
 	Usage     MemoryEntry       `json:"usage,omitempty"`
@@ -113,6 +119,45 @@ type Memory struct {
 	Kernel    MemoryEntry       `json:"kernel,omitempty"`
 	KernelTCP MemoryEntry       `json:"kernelTCP,omitempty"`
 	Raw       map[string]uint64 `json:"raw,omitempty"`
+}
+
+type L3CacheInfo struct {
+	CbmMask    string `json:"cbm_mask,omitempty"`
+	MinCbmBits uint64 `json:"min_cbm_bits,omitempty"`
+	NumClosids uint64 `json:"num_closids,omitempty"`
+}
+
+type MemBwInfo struct {
+	BandwidthGran uint64 `json:"bandwidth_gran,omitempty"`
+	DelayLinear   uint64 `json:"delay_linear,omitempty"`
+	MinBandwidth  uint64 `json:"min_bandwidth,omitempty"`
+	NumClosids    uint64 `json:"num_closids,omitempty"`
+}
+
+type IntelRdt struct {
+	// The read-only L3 cache information
+	L3CacheInfo *L3CacheInfo `json:"l3_cache_info,omitempty"`
+
+	// The read-only L3 cache schema in root
+	L3CacheSchemaRoot string `json:"l3_cache_schema_root,omitempty"`
+
+	// The L3 cache schema in 'container_id' group
+	L3CacheSchema string `json:"l3_cache_schema,omitempty"`
+
+	// The read-only memory bandwidth information
+	MemBwInfo *MemBwInfo `json:"mem_bw_info,omitempty"`
+
+	// The read-only memory bandwidth schema in root
+	MemBwSchemaRoot string `json:"mem_bw_schema_root,omitempty"`
+
+	// The memory bandwidth schema in 'container_id' group
+	MemBwSchema string `json:"mem_bw_schema,omitempty"`
+
+	// The memory bandwidth monitoring statistics from NUMA nodes in 'container_id' group
+	MBMStats *[]intelrdt.MBMNumaNodeStats `json:"mbm_stats,omitempty"`
+
+	// The cache monitoring technology statistics from NUMA nodes in 'container_id' group
+	CMTStats *[]intelrdt.CMTNumaNodeStats `json:"cmt_stats,omitempty"`
 }
 
 type NetworkInterface struct {
