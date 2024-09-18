@@ -1,6 +1,6 @@
 module github.com/cycleplatform/go-runc
 
-go 1.22.0
+go 1.21
 
 require (
 	github.com/containerd/console v1.0.4
